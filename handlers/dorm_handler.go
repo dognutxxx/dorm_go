@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -18,8 +17,8 @@ type Dorm struct {
 	Name          string  `json:"name" example:"หอพักสุขสบาย A"`
 	Location      string  `json:"location" example:"ถนนพหลโยธิน 123"`
 	Capacity      int     `json:"capacity" example:"50"`
-	PricePerMonth float64 `json:"PricePerMonth" example:"4500.00"`
-	IsAvailable   bool    `json:"IsAvailable" example:"true"`
+	PricePerMonth float64 `json:"price_per_month" example:"4500.00"`
+	IsAvailable   bool    `json:"is_available" example:"true"`
 	CreatedAt     string  `json:"created_at,omitempty"`
 	UpdatedAt     string  `json:"updated_at,omitempty"`
 }
@@ -207,6 +206,11 @@ func GetDorm(db *sql.DB) http.HandlerFunc {
 // UPDATE
 func UpdateDorm(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// (1) ดึงค่า ID จาก URL Param (เช่น /dorms/{id})
+		// ถ้าใช้ chi หรือ gorilla/mux:
+		// idStr := chi.URLParam(r, "id")          // หรือ mux.Vars(r)["id"]
+		// id, err := strconv.Atoi(idStr)
+		// ถ้าไม่ได้ใช้ router อื่น ๆ อาจต้อง parse เอง
 		params := mux.Vars(r)
 		idStr := params["id"]
 		id, err := strconv.Atoi(idStr)
@@ -215,29 +219,56 @@ func UpdateDorm(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// (2) Decode JSON จาก Body
 		var dorm Dorm
-
-		log.Printf("Updating dorm: %+v", dorm)
-
 		if err := json.NewDecoder(r.Body).Decode(&dorm); err != nil {
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 			return
 		}
 
-		sqlStatement := `UPDATE dorms 
-                         SET name=$1, location=$2, capacity=$3, price_per_month=$4, is_available=$5
-                         WHERE id=$6 RETURNING created_at`
-		err = db.QueryRow(sqlStatement, dorm.Name, dorm.Location, dorm.Capacity, dorm.PricePerMonth, dorm.IsAvailable, id).Scan(&dorm.UpdatedAt)
-		if err == sql.ErrNoRows {
-			http.Error(w, "Not Found", http.StatusNotFound)
-			return
-		} else if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		// อาจเพิ่มการตรวจสอบค่าว่าง / รูปแบบข้อมูลที่จำเป็นก่อนก็ได้
+
+		// (3) เตรียมคำสั่ง SQL และอัปเดตค่า
+		sqlStatement := `
+			UPDATE dorms
+			SET
+				name = $1,
+				location = $2,
+				capacity = $3,
+				price_per_month = $4,
+				is_available = $5,
+				updated_at = NOW()
+			WHERE id = $6
+			RETURNING id, created_at, updated_at
+		`
+
+		// (4) Execute Query พร้อมกับ Scan ค่าที่คืนกลับ (หากต้องการ)
+		err = db.QueryRow(
+			sqlStatement,
+			dorm.Name,
+			dorm.Location,
+			dorm.Capacity,
+			dorm.PricePerMonth,
+			dorm.IsAvailable,
+			id, // WHERE id = $6
+		).Scan(
+			&dorm.ID,
+			&dorm.CreatedAt,
+			&dorm.UpdatedAt,
+		)
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Dorm not found", http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 
-		dorm.ID = id
-		w.Header().Set("Content-Type", "application/json")
+		// (5) ตอบกลับเป็น JSON
+		// (เนื่องจากเรา Scan คืนมาได้แล้ว จึงส่ง dorm ที่อัปเดตกลับไปได้เลย)
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(dorm)
 	}
 }

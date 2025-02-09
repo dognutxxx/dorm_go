@@ -89,7 +89,7 @@ func main() {
 	api.HandleFunc("/dorms", handlers.GetAllDorms(db)).Methods("GET", "OPTIONS")
 	api.HandleFunc("/createDorms", handlers.CreateDorm(db)).Methods("POST", "OPTIONS")
 	api.HandleFunc("/dorms/{id}", handlers.GetDorm(db)).Methods("GET", "OPTIONS")
-	api.HandleFunc("/updateDorms/{id}", handlers.UpdateDorm(db)).Methods("POST", "OPTIONS")
+	api.HandleFunc("/updateDorms/{id}", handlers.UpdateDorm(db)).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/deleteDorms/{id}", handlers.DeleteDorm(db)).Methods("DELETE", "OPTIONS")
 	api.HandleFunc("/dorms/with-rooms", handlers.GetDormWithRooms(db)).Methods("GET", "OPTIONS")
 
